@@ -1,7 +1,18 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "5.53.0"
+    }
+  }
+}
+
+# Proveedor
 provider "aws" {
   region = "us-east-1"
 }
 
+# Módulo de VPC
 module "my_vpc" {
   source = "terraform-aws-modules/vpc/aws"
 
@@ -21,6 +32,7 @@ module "my_vpc" {
   }
 }
 
+# Grupo de Seguridad
 resource "aws_security_group" "my_sg" {
   name        = "my-security-group"
   description = "Allow HTTP, HTTPS, and SSH traffic"
@@ -61,9 +73,9 @@ resource "aws_security_group" "my_sg" {
   }
 }
 
+# Bucket S3
 resource "aws_s3_bucket" "my_bucket" {
-  bucket = "my-unique-bucket-name"
-  acl    = "private"
+  bucket = "fernando_prueba3"
 
   tags = {
     Name        = "my-bucket"
@@ -71,9 +83,105 @@ resource "aws_s3_bucket" "my_bucket" {
   }
 }
 
-resource "aws_s3_bucket_object" "index_php" {
+resource "aws_s3_bucket_acl" "my_bucket_acl" {
+  bucket = aws_s3_bucket.my_bucket.id
+  acl    = "private"
+}
+
+resource "aws_s3_object" "index_php" {
   bucket = aws_s3_bucket.my_bucket.bucket
   key    = "index.php"
-  source = "path/to/your/local/index.php"
+  source = "Fernando_Tec/index.php"
   acl    = "public-read"
+}
+
+# Sistema de Archivos EFS
+resource "aws_efs_file_system" "my_efs" {
+  creation_token = "my-efs-token"
+  tags = {
+    Name = "my-efs"
+  }
+}
+
+resource "aws_efs_mount_target" "my_efs_mount_target" {
+  count           = length(module.my_vpc.public_subnets)
+  file_system_id  = aws_efs_file_system.my_efs.id
+  subnet_id       = element(module.my_vpc.public_subnets, count.index)
+  security_groups = [aws_security_group.my_sg.id]
+}
+
+# Instancias EC2
+resource "aws_instance" "my_instance" {
+  count         = 3
+  ami           = "ami-01b799c439fd5516a"
+  instance_type = "t2.micro"
+  key_name      = "vockey"
+  subnet_id     = element(module.my_vpc.public_subnets, count.index)
+  security_groups = [aws_security_group.my_sg.name]
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y amazon-efs-utils
+              yum install -y httpd php
+              mkdir -p /var/www/html
+              mount -t efs -o tls ${aws_efs_file_system.my_efs.id}:/ /var/www/html
+              aws s3 cp s3://${aws_s3_bucket.my_bucket.bucket}/index.php /var/www/html/index.php
+              systemctl start httpd
+              systemctl enable httpd
+            EOF
+
+  tags = {
+    Name = "my-instance-${count.index}"
+  }
+}
+
+# Load Balancer (ALB)
+resource "aws_lb" "my_lb" {
+  name               = "my-lb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.my_sg.id]
+  subnets            = module.my_vpc.public_subnets
+
+  tags = {
+    Name = "my-lb"
+  }
+}
+
+resource "aws_lb_target_group" "my_target_group" {
+  name     = "my-target-group"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = module.my_vpc.vpc_id
+
+  health_check {
+    path                = "/"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name = "my-target-group"
+  }
+}
+
+resource "aws_lb_listener" "my_listener" {
+  load_balancer_arn = aws_lb.my_lb.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.my_target_group.arn
+  }
+}
+
+resource "aws_lb_target_group_attachment" "my_target_group_attachment" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.my_target_group.arn
+  target_id        = aws_instance.my_instance[count.index].id
+  port             = 80
 }
