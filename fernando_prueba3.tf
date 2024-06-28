@@ -74,9 +74,9 @@ resource "aws_security_group" "my_sg" {
 
 # Bucket S3
 resource "aws_s3_bucket" "my_bucket" {
-  bucket = "fernando_vasquez_prueba3_unico"
+  bucket = "fernandovasquez-prueba3-2024"
   tags = {
-    Name        = "fernando_vasquez_prueba3_unico"
+    Name        = "fernando-vasquezprueba3"
     Environment = "prd"
   }
 }
@@ -97,6 +97,7 @@ resource "time_sleep" "wait_10_seconds" {
   depends_on      = [aws_s3_bucket.my_bucket]
   create_duration = "10s"
 }
+
 
 # Sistema de Archivos EFS
 resource "aws_efs_file_system" "my_efs" {
