@@ -7,12 +7,11 @@ terraform {
   }
 }
 
-# Proveedor
 provider "aws" {
   region = "us-east-1"
 }
 
-# Módulo de VPC
+# Creacion de VPC
 module "my_vpc" {
   source = "terraform-aws-modules/vpc/aws"
 
@@ -34,7 +33,7 @@ module "my_vpc" {
 
 # Grupo de Seguridad
 resource "aws_security_group" "my_sg" {
-  name        = "my-security-group"
+  name        = "f-security-group"
   description = "Allow HTTP, HTTPS, and SSH traffic"
   vpc_id      = module.my_vpc.vpc_id
 
@@ -67,7 +66,7 @@ resource "aws_security_group" "my_sg" {
   }
 
   tags = {
-    Name        = "my-security-group"
+    Name        = "f-security-group"
     Terraform   = "true"
     Environment = "prd"
   }
@@ -75,10 +74,9 @@ resource "aws_security_group" "my_sg" {
 
 # Bucket S3
 resource "aws_s3_bucket" "my_bucket" {
-  bucket = "fernando_prueba3"
-
+  bucket = "fernando_vasquez_prueba3_unico"
   tags = {
-    Name        = "my-bucket"
+    Name        = "fernando_vasquez_prueba3_unico"
     Environment = "prd"
   }
 }
@@ -93,6 +91,11 @@ resource "aws_s3_object" "index_php" {
   key    = "index.php"
   source = "Fernando_Tec/index.php"
   acl    = "public-read"
+}
+
+resource "time_sleep" "wait_10_seconds" {
+  depends_on      = [aws_s3_bucket.my_bucket]
+  create_duration = "10s"
 }
 
 # Sistema de Archivos EFS
@@ -111,7 +114,7 @@ resource "aws_efs_mount_target" "my_efs_mount_target" {
 }
 
 # Instancias EC2
-resource "aws_instance" "my_instance" {
+resource "aws_instance" "f_instance" {
   count         = 3
   ami           = "ami-01b799c439fd5516a"
   instance_type = "t2.micro"
@@ -137,19 +140,19 @@ resource "aws_instance" "my_instance" {
 }
 
 # Load Balancer (ALB)
-resource "aws_lb" "my_lb" {
-  name               = "my-lb"
+resource "aws_lb" "f_lb" {
+  name               = "prueba3-lb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.my_sg.id]
   subnets            = module.my_vpc.public_subnets
 
   tags = {
-    Name = "my-lb"
+    Name = "prueba3-lb"
   }
 }
 
-resource "aws_lb_target_group" "my_target_group" {
+resource "aws_lb_target_group" "f_target_group" {
   name     = "my-target-group"
   port     = 80
   protocol = "HTTP"
@@ -168,20 +171,20 @@ resource "aws_lb_target_group" "my_target_group" {
   }
 }
 
-resource "aws_lb_listener" "my_listener" {
-  load_balancer_arn = aws_lb.my_lb.arn
+resource "aws_lb_listener" "Listener_F" {
+  load_balancer_arn = aws_lb.f_lb.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.my_target_group.arn
+    target_group_arn = aws_lb_target_group.f_target_group.arn
   }
 }
 
-resource "aws_lb_target_group_attachment" "my_target_group_attachment" {
+resource "aws_lb_target_group_attachment" "f_target_group_attachment" {
   count            = 3
-  target_group_arn = aws_lb_target_group.my_target_group.arn
-  target_id        = aws_instance.my_instance[count.index].id
+  target_group_arn = aws_lb_target_group.f_target_group.arn
+  target_id        = aws_instance.f_instance[count.index].id
   port             = 80
 }
